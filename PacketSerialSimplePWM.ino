@@ -1,122 +1,136 @@
 #include <SoftwareSerial.h>
 #include "RoboClaw.h"
 
+// MOTOR SET UP
 // Set up SoftwareSerial on pins 10 (RX) and 11 (TX)
 SoftwareSerial serial(10, 11);  
 RoboClaw roboclaw(&serial, 10000); // RoboClaw object
-
 #define address 0x80 // Define the RoboClaw address
 
-#define Kp 1.0
-#define Ki 0.1
-#define Kd 0.5
-#define qpps 7920
+// Velocity PID, set to zero for position PID
+#define Kp 2
+#define Ki 0.2
+#define Kd 0
+#define qpps 7875 // check this
 
+//Position PID
+#define PosKp 2000
+#define PosKi 0
+#define PosKd 50000
+#define KiMax 0
+#define DeadZone 10
+#define Min -10000
+#define Max 10000
+
+unsigned long lastMoveTime = 0;
+const unsigned long moveInterval = 500; // ms
+bool movingForward = true;
+int target_speed = 30;
+
+const int rpm = 100;
+const float cpr_motor = 4741.44; // 48*98.78
+volatile float distance = 0;
+
+// ENCODER SET UP
 volatile int temp, counter = 0; // increase or decrease depending on the rotation of encoder
 float angle = 0;
 float linear_distance = 0;
-const int cpr = 2000;
+const int cpr = 4000;
 const float radius = 5.75; // mm, radius of encoder capstan
-const int rpm = 100;
-const float cpr_motor = 4752.0; // 48*99 
-volatile float distance = 0;
-int loops = 0;
+
 
 void setup() {
   // Initialize serial communication
-  Serial.begin(115200);   // For Serial Monitor
+  Serial.begin(9600);   // For Serial Monitor
   roboclaw.begin(38400);  // For RoboClaw communication
 
-  roboclaw.SetM1VelocityPID(address,Kd,Kp,Ki,qpps);
 
+  roboclaw.SetM1VelocityPID(address,Kp,Ki,Kd,qpps);
+//  roboclaw.SetM1PositionPID(address,PosKp,PosKi,PosKd,KiMax,DeadZone,Min,Max);
+  
   // Encoder -- A leads B is clockwise, B leads A in counterclockwise
-  pinMode(2, INPUT_PULLUP); // internal pullup input pin 2, A (brown)
-  pinMode(3, INPUT_PULLUP); // internal pullup input pin 3, B (red)
-  pinMode(18, INPUT_PULLUP);
+   pinMode(2, INPUT_PULLUP); // internal pullup input pin 2, A (brown)
+   pinMode(3, INPUT_PULLUP); // internal pullup input pin 3, B (red)
+   pinMode(18, INPUT_PULLUP);
 
   //Arduino Mega interrupt pins: 2, 3, 18, 19, 20, 21
-  attachInterrupt(digitalPinToInterrupt(2), A, RISING);
-  attachInterrupt(digitalPinToInterrupt(3), B, RISING);
-  attachInterrupt(digitalPinToInterrupt(18), zero, RISING);
-
-  while(digitalRead(18)==LOW){
-  } 
-  counter = 0;
-//  Serial.print("Counter initialized to zero");
+   attachInterrupt(digitalPinToInterrupt(2), A, RISING);
+   attachInterrupt(digitalPinToInterrupt(3), B, RISING);
+   attachInterrupt(digitalPinToInterrupt(18), zero, RISING);
+   
+  // Nothing happens until encoder is initialized at zero
+   while(digitalRead(18)==LOW){
+   } 
+   counter = 0;
 }
 
 
 void loop() {
+//  readEncoder();
+  moveMotor();
+//  readMotorEncoder();
+
+}
+
+
+void moveMotor(void) {
+//  roboclaw.SpeedAccelDeccelPositionM1(address, 0, qpps, 0, 6000, 1);
+//  roboclaw.SpeedAccelDeccelPositionM1(address, 0, qpps, 0, 3000, 0);
+
+  uint8_t depth1,depth2;
+  roboclaw.SpeedDistanceM1(address,2000,600,1);
+  do{
+//    readMotorEncoder();
+    roboclaw.ReadBuffers(address,depth1,depth2);
+  }while(depth1!=0x80);
   readEncoder();
-  // motor move
-  if(loops<20){
-    roboclaw.ForwardM1(address,30); // counterclockwise
-    delay(500);
-    roboclaw.BackwardM1(address,30); //clockwise
-    delay(500);
-  }
-  loops++;
-//  roboclaw.ForwardM1(address,0);
+  roboclaw.SpeedDistanceM1(address,-2000,600,1);
+  do{
+//    readMotorEncoder();
+    roboclaw.ReadBuffers(address,depth1,depth2);
+  }while(depth1!=0x80);
+  readEncoder();
+
 //  delay(1000);
 
 }
 
-// void readMotorSpeed(void) {
-//  uint8_t status2;
-//  bool valid2;
-//  int32_t speed1 = roboclaw.ReadSpeedM1(address, &status2, &valid2);
-////  Serial.print("Speed1:");
-////  if(valid2){
-////    Serial.print(speed1,DEC);
-////    Serial.print("");
-////  } else {
-////    Serial.print("failed");
-////  }
-// }
+void readMotorSpeed(void) {
+  uint8_t status;
+  bool valid;
+  int32_t speed = roboclaw.ReadSpeedM1(address, &status, &valid);
+  Serial.print("Actual speed:");
+  Serial.print(speed);
+  Serial.print("\n");
+}
 
- void readMotorEncoder(void) {
-   //Read all the data from Roboclaw before displaying on Serial Monitor window
-   //This prevents the hardware serial interrupt from interfering with
-   //reading data using software serial.
-   uint8_t status1; // 80 (increase) or 82 (decrease) 
-   bool valid1;
-   int32_t enc1= roboclaw.ReadEncM1(address, &status1, &valid1);
-   Serial.print("MotorEncoder1");
-   if(valid1){
-     Serial.print(enc1,DEC);
-     Serial.print(" ");
-     Serial.print(status1,HEX);
-     Serial.print(" ");
-   }
-   else{
-     Serial.print("invalid ");
-   }
-   Serial.println();
- }
+void readMotorEncoder(void) {
+  uint8_t status; // 80 (increase) or 82 (decrease) 
+  bool valid;
+  int32_t enc= roboclaw.ReadEncM1(address, &status, &valid);
+  Serial.print("MotorEncoder:");
+  Serial.print(enc,DEC);
+  Serial.print("\n");
+}
 
 
 void readEncoder(void) {
-  // 360 degree at bottom, resets to zero there
-  if( counter != temp ){ // only update if position changes
-//      Serial.print("\nEncoder:\n");
-      angle = (counter * 180.0) / cpr; // Angle in degrees
-      linear_distance = (angle * PI / 180.0) * radius; // Linear distance in mm
-
-//      Serial.print("counter:");
-//      Serial.print(counter);
-//      Serial.print("\n");
-//      Serial.print("angle:");
-      Serial.print(angle); // Two decimal precision
+//   360 degree at bottom, resets to zero there
+//  if(temp != counter){
+//    angle = (counter * 360.0) / cpr; // Angle in degrees
+//    linear_distance = (angle * PI / 180.0) * radius; // Linear distance in mm
+      Serial.print("counter:");
+      Serial.print(counter);
       Serial.print("\n");
-//      Serial.print("linear_distance:");
-//      Serial.print(linear_distance);
-//      readMotorEncoder();
-      temp = counter;
-  }
+//    Serial.print("angle:");
+//    Serial.print(angle); // Two decimal precision
+//    Serial.print("\n");
+//    temp = counter;
+//  }
 }
 
 void A() {
-  // A is activated if DigitalPin nr 2 is going from LOW to HIGH
+  // A is activated if DigitalPin 2 is going from LOW to HIGH
   // Check pin 3 to determine the direction
   if(digitalRead(3)==LOW) {
     counter++;
@@ -126,7 +140,7 @@ void A() {
 }
    
 void B() {
-  // B is activated if DigitalPin nr 3 is going from LOW to HIGH
+  // B is activated if DigitalPin 3 is going from LOW to HIGH
   // Check with pin 2 to determine the direction
   if(digitalRead(2)==LOW) {
     counter--;
