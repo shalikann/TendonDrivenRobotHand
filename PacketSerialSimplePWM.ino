@@ -11,7 +11,7 @@ RoboClaw roboclaw(&serial, 10000); // RoboClaw object
 #define Kp 2
 #define Ki 0.2
 #define Kd 0
-#define qpps 7875 // check this
+#define qpps 7875
 
 //Position PID
 #define PosKp 2000
@@ -22,17 +22,8 @@ RoboClaw roboclaw(&serial, 10000); // RoboClaw object
 #define Min -10000
 #define Max 10000
 
-unsigned long lastMoveTime = 0;
-const unsigned long moveInterval = 500; // ms
-bool movingForward = true;
-int target_speed = 30;
-
-const int rpm = 100;
-const float cpr_motor = 4741.44; // 48*98.78
-volatile float distance = 0;
-
 // ENCODER SET UP
-volatile int temp, counter = 0; // increase or decrease depending on the rotation of encoder
+volatile int counter = 0; // increase or decrease depending on the rotation of encoder
 float angle = 0;
 float linear_distance = 0;
 const int cpr = 4000;
@@ -59,17 +50,14 @@ void setup() {
    attachInterrupt(digitalPinToInterrupt(18), zero, RISING);
    
   // Nothing happens until encoder is initialized at zero
-   while(digitalRead(18)==LOW){
-   } 
-   counter = 0;
+//   while(digitalRead(18)==LOW){
+//   } 
+//   counter = 0;
 }
 
 
 void loop() {
-//  readEncoder();
   moveMotor();
-//  readMotorEncoder();
-
 }
 
 
@@ -79,19 +67,19 @@ void moveMotor(void) {
 
   uint8_t depth1,depth2;
   roboclaw.SpeedDistanceM1(address,2000,600,1);
-  do{
+  while(true){
+    roboclaw.ReadBuffers(address,depth1, depth2);
+    readEncoder();
 //    readMotorEncoder();
-    roboclaw.ReadBuffers(address,depth1,depth2);
-  }while(depth1!=0x80);
-  readEncoder();
+    if (depth1 == 0x80) break;
+  }
   roboclaw.SpeedDistanceM1(address,-2000,600,1);
-  do{
-//    readMotorEncoder();
+  while(true){
     roboclaw.ReadBuffers(address,depth1,depth2);
-  }while(depth1!=0x80);
-  readEncoder();
-
-//  delay(1000);
+    readEncoder();
+//    readMotorEncoder();
+    if (depth1==0x80) break;
+  }
 
 }
 
@@ -116,17 +104,14 @@ void readMotorEncoder(void) {
 
 void readEncoder(void) {
 //   360 degree at bottom, resets to zero there
-//  if(temp != counter){
-//    angle = (counter * 360.0) / cpr; // Angle in degrees
+    angle = (counter * 360.0) / cpr; // Angle in degrees
 //    linear_distance = (angle * PI / 180.0) * radius; // Linear distance in mm
-      Serial.print("counter:");
-      Serial.print(counter);
-      Serial.print("\n");
+    Serial.print("counter:");
+    Serial.print(counter);
+    Serial.print("\n");
 //    Serial.print("angle:");
 //    Serial.print(angle); // Two decimal precision
 //    Serial.print("\n");
-//    temp = counter;
-//  }
 }
 
 void A() {
